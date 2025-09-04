@@ -14,10 +14,9 @@ A repository struktúrája mappákba rendezve tartalmazza a különböző témá
 A tantárgy jellegéből adódóan több különböző szkriptnyelv előfordulhat, például:
 
 - Python  
-- JavaScript  
 - Bash / Shell szkriptek  
 - Powershell  
-- Egyéb, a tárgy keretében használt nyelvek  
+- Egyéb
 
 ---
 
