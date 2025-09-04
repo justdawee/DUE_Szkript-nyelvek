@@ -1,6 +1,6 @@
 ﻿# QR Generátor + Olvasó
 
-Hallgató: Lukács Dávid Roland
+Hallgató: Lukács Dávid Roland   
 Monogram: HHC62Y
 
 ## Rövid leírás
