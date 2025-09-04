@@ -4,6 +4,8 @@ from pathlib import Path
 from PIL import Image, ImageTk
 import qrcode
 import cv2
+import webbrowser
+import re
 from ab_qr import ABHistory, ab_timestamp
 
 APP_TITLE = "QR Generátor + Olvasó"
@@ -11,6 +13,9 @@ BASE = Path(__file__).parent
 OUT_DIR = BASE / "out"
 DATA_DIR = BASE / "data"
 HISTORY_PATH = DATA_DIR / "history.json"
+IMG_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"}
+
+url_re = re.compile(r"^(https?://[^\s]+)$", re.IGNORECASE)
 
 class App(tk.Tk):
     def __init__(self):
@@ -23,6 +28,8 @@ class App(tk.Tk):
         self.current_qr_pil = None
         self.current_img_pil = None
         self.current_img_tk = None
+        self.decoded_kind = "text"
+        self.decoded_value = ""
 
         top = ttk.Frame(self)
         top.pack(fill="x", padx=10, pady=10)
@@ -49,7 +56,10 @@ class App(tk.Tk):
         ttk.Label(right, text="Felismert adat").pack(anchor="w", pady=(0,4))
         self.decoded_var = tk.StringVar()
         self.decoded_label = ttk.Label(right, textvariable=self.decoded_var, wraplength=280)
-        self.decoded_label.pack(fill="x", pady=(0,10))
+        self.decoded_label.pack(fill="x")
+        self.link_btn = ttk.Label(right, text="", foreground="#2563eb", cursor="hand2")
+        self.link_btn.pack(anchor="w", pady=(6,10))
+        self.link_btn.bind("<Button-1>", self.on_open_link)
         ttk.Label(right, text="Előzmények").pack(anchor="w")
         self.hist_list = tk.Listbox(right, height=20)
         self.hist_list.pack(fill="both", expand=True)
@@ -66,6 +76,7 @@ class App(tk.Tk):
 
         self.refresh_history()
         self.text_entry.focus_set()
+        self.update_link_ui("", "")
 
     def on_generate(self):
         text = self.text_var.get().strip()
@@ -74,7 +85,10 @@ class App(tk.Tk):
             return
         img = qrcode.make(text)
         self.current_qr_pil = img
+        self.decoded_kind = "text"
+        self.decoded_value = ""
         self.decoded_var.set("")
+        self.update_link_ui("", "")
         self.show_image(img)
         ts = ab_timestamp()
         self.history.add("generate", text, "", ts)
@@ -120,18 +134,63 @@ class App(tk.Tk):
         self.show_image(pil_img)
         img_cv = cv2.imread(str(path))
         if img_cv is None:
-            self.decoded_var.set("Nem olvasható kép")
+            self.set_decoded("text", "Nem olvasható kép")
             return
         gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
         detector = cv2.QRCodeDetector()
         data, points, straight_qrcode = detector.detectAndDecode(gray)
         if data:
-            self.decoded_var.set(data)
+            kind = self.classify_decoded(data)
+            self.set_decoded(kind, data)
+            if kind == "image":
+                p = Path(data)
+                if p.exists():
+                    try:
+                        im = Image.open(p)
+                        self.show_image(im)
+                    except Exception:
+                        pass
         else:
-            self.decoded_var.set("Nem találtam QR kódot")
+            self.set_decoded("text", "Nem találtam QR kódot")
         ts = ab_timestamp()
-        self.history.add("decode", self.decoded_var.get(), str(path), ts)
+        self.history.add("decode", self.decoded_value, str(path), ts)
         self.refresh_history()
+
+    def classify_decoded(self, s: str) -> str:
+        if url_re.match(s):
+            return "url"
+        p = Path(s)
+        if p.exists() and p.suffix.lower() in IMG_EXTS:
+            return "image"
+        return "text"
+
+    def set_decoded(self, kind: str, value: str):
+        self.decoded_kind = kind
+        self.decoded_value = value
+        if kind == "url":
+            self.decoded_var.set(value)
+            self.update_link_ui("Megnyitás böngészőben", value)
+        else:
+            self.decoded_var.set(value)
+            self.update_link_ui("", "")
+
+    def update_link_ui(self, label: str, href: str):
+        if label and href:
+            self.link_btn.config(text=label)
+            self.link_btn.href = href
+            self.link_btn.pack_configure(anchor="w", pady=(6,10))
+        else:
+            self.link_btn.config(text="")
+            self.link_btn.href = ""
+            self.link_btn.pack_configure(anchor="w", pady=(0,0))
+
+    def on_open_link(self, event=None):
+        href = getattr(self.link_btn, "href", "")
+        if href:
+            try:
+                webbrowser.open(href, new=2)
+            except Exception:
+                pass
 
     def show_image(self, pil_img: Image.Image):
         cw = self.canvas.winfo_width() or 800
